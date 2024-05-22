@@ -126,6 +126,8 @@ public class RocksDBIncrementalRestoreOperation<K> implements RocksDBRestoreOper
 
     private final boolean asyncCompactAfterRescale;
 
+    private final boolean useDeleteFilesInRange;
+
     public RocksDBIncrementalRestoreOperation(
             String operatorIdentifier,
             KeyGroupRange keyGroupRange,
@@ -148,7 +150,8 @@ public class RocksDBIncrementalRestoreOperation<K> implements RocksDBRestoreOper
             Long writeBufferManagerCapacity,
             double overlapFractionThreshold,
             boolean useIngestDbRestoreMode,
-            boolean asyncCompactAfterRescale) {
+            boolean asyncCompactAfterRescale,
+            boolean useDeleteFilesInRange) {
         this.rocksHandle =
                 new RocksDBHandle(
                         kvStateInformation,
@@ -178,6 +181,7 @@ public class RocksDBIncrementalRestoreOperation<K> implements RocksDBRestoreOper
         //        this.asyncCompactAfterRescale = asyncCompactAfterRescale;
         this.useIngestDbRestoreMode = false;
         this.asyncCompactAfterRescale = false;
+        this.useDeleteFilesInRange = useDeleteFilesInRange;
     }
 
     /**
@@ -371,7 +375,8 @@ public class RocksDBIncrementalRestoreOperation<K> implements RocksDBRestoreOper
                         this.rocksHandle.getColumnFamilyHandles(),
                         keyGroupRange,
                         stateHandleKeyGroupRange,
-                        keyGroupPrefixBytes);
+                        keyGroupPrefixBytes,
+                        useDeleteFilesInRange);
             } catch (RocksDBException e) {
                 String errMsg = "Failed to clip DB after initialization.";
                 logger.error(errMsg, e);
@@ -600,16 +605,13 @@ public class RocksDBIncrementalRestoreOperation<K> implements RocksDBRestoreOper
                 keyGroupRange.prettyPrintInterval(),
                 operatorIdentifier);
 
-        // Choose the best state handle for the initial DB
+        // Choose the best state handle for the initial DB and remove it from the list
         final IncrementalLocalKeyedStateHandle selectedInitialHandle =
                 localKeyedStateHandles.remove(
                         RocksDBIncrementalCheckpointUtils.findTheBestStateHandleForInitial(
                                 localKeyedStateHandles, keyGroupRange, overlapFractionThreshold));
 
         Preconditions.checkNotNull(selectedInitialHandle);
-
-        // Remove the selected handle from the list so that we don't restore it twice.
-        localKeyedStateHandles.remove(selectedInitialHandle);
 
         // Init the base DB instance with the initial state
         initBaseDBFromSingleStateHandle(selectedInitialHandle);

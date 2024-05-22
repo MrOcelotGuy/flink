@@ -24,9 +24,10 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.local.LocalFileSystem;
 import org.apache.flink.runtime.checkpoint.filemerging.FileMergingSnapshotManager;
 import org.apache.flink.runtime.checkpoint.filemerging.FileMergingSnapshotManagerBuilder;
-import org.apache.flink.runtime.checkpoint.filemerging.SegmentFileStateHandle;
+import org.apache.flink.runtime.checkpoint.filemerging.FileMergingType;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.runtime.state.CheckpointedStateScope;
+import org.apache.flink.runtime.state.filemerging.SegmentFileStateHandle;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -64,7 +65,7 @@ public class FsMergingCheckpointStorageLocationTest {
     private static final int WRITE_BUFFER_SIZE = 1024;
 
     private static final FileMergingSnapshotManager.SubtaskKey SUBTASK_KEY =
-            new FileMergingSnapshotManager.SubtaskKey("opId", 1, 1);
+            new FileMergingSnapshotManager.SubtaskKey("jobId", "opId", 1, 1);
 
     @Before
     public void prepareDirectories() {
@@ -220,7 +221,9 @@ public class FsMergingCheckpointStorageLocationTest {
 
     private FileMergingSnapshotManager createFileMergingSnapshotManager(long maxFileSize) {
         FileMergingSnapshotManager mgr =
-                new FileMergingSnapshotManagerBuilder(SNAPSHOT_MGR_ID).build();
+                new FileMergingSnapshotManagerBuilder(
+                                SNAPSHOT_MGR_ID, FileMergingType.MERGE_WITHIN_CHECKPOINT)
+                        .build();
 
         mgr.initFileSystem(
                 getSharedInstance(),

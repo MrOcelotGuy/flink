@@ -27,6 +27,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.configuration.SchedulerExecutionMode;
+import org.apache.flink.configuration.TraceOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.core.execution.CheckpointType;
 import org.apache.flink.core.execution.SavepointFormatType;
@@ -147,6 +148,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.apache.flink.runtime.executiongraph.ExecutionGraphUtils.isAnyOutputBlocking;
 
 /**
  * A {@link SchedulerNG} implementation that uses the declarative resource management and
@@ -330,6 +333,9 @@ public class AdaptiveScheduler
 
     private final JobManagerJobMetricGroup jobManagerJobMetricGroup;
 
+    private final JobFailureMetricReporter jobFailureMetricReporter;
+    private final boolean reportEventsAsSpans;
+
     public AdaptiveScheduler(
             Settings settings,
             JobGraph jobGraph,
@@ -420,6 +426,9 @@ public class AdaptiveScheduler
         this.exceptionHistory =
                 new BoundedFIFOQueue<>(configuration.get(WebOptions.MAX_EXCEPTION_HISTORY_SIZE));
         this.jobManagerJobMetricGroup = jobManagerJobMetricGroup;
+
+        this.jobFailureMetricReporter = new JobFailureMetricReporter(jobManagerJobMetricGroup);
+        this.reportEventsAsSpans = configuration.get(TraceOptions.REPORT_EVENTS_AS_SPANS);
     }
 
     private static void assertPreconditions(JobGraph jobGraph) throws RuntimeException {
@@ -757,9 +766,15 @@ public class AdaptiveScheduler
             @Nullable String targetDirectory, boolean cancelJob, SavepointFormatType formatType) {
         return state.tryCall(
                         StateWithExecutionGraph.class,
-                        stateWithExecutionGraph ->
-                                stateWithExecutionGraph.triggerSavepoint(
-                                        targetDirectory, cancelJob, formatType),
+                        stateWithExecutionGraph -> {
+                            if (isAnyOutputBlocking(stateWithExecutionGraph.getExecutionGraph())) {
+                                return FutureUtils.<String>completedExceptionally(
+                                        new CheckpointException(
+                                                CheckpointFailureReason.BLOCKING_OUTPUT_EXIST));
+                            }
+                            return stateWithExecutionGraph.triggerSavepoint(
+                                    targetDirectory, cancelJob, formatType);
+                        },
                         "triggerSavepoint")
                 .orElse(
                         FutureUtils.completedExceptionally(
@@ -847,8 +862,15 @@ public class AdaptiveScheduler
             @Nullable String targetDirectory, boolean terminate, SavepointFormatType formatType) {
         return state.tryCall(
                         Executing.class,
-                        executing ->
-                                executing.stopWithSavepoint(targetDirectory, terminate, formatType),
+                        executing -> {
+                            if (isAnyOutputBlocking(executing.getExecutionGraph())) {
+                                return FutureUtils.<String>completedExceptionally(
+                                        new CheckpointException(
+                                                CheckpointFailureReason.BLOCKING_OUTPUT_EXIST));
+                            }
+                            return executing.stopWithSavepoint(
+                                    targetDirectory, terminate, formatType);
+                        },
                         "stopWithSavepoint")
                 .orElse(
                         FutureUtils.completedExceptionally(
@@ -977,6 +999,7 @@ public class AdaptiveScheduler
                 jobInformation.getJobID(),
                 jobInformation.getName(),
                 jobStatus,
+                jobGraph.getJobType(),
                 cause,
                 jobInformation.getCheckpointingSettings(),
                 initializationTimestamp,
@@ -1187,7 +1210,6 @@ public class AdaptiveScheduler
                 executionGraphWithVertexParallelism.getExecutionGraph();
 
         executionGraph.start(componentMainThreadExecutor);
-        executionGraph.transitionToRunning();
 
         executionGraph.setInternalTaskFailuresListener(
                 new UpdateSchedulerNgOnInternalFailuresListener(this));
@@ -1301,7 +1323,20 @@ public class AdaptiveScheduler
     }
 
     @Override
-    public FailureResult howToHandleFailure(Throwable failure) {
+    public FailureResult howToHandleFailure(
+            Throwable failure, CompletableFuture<Map<String, String>> failureLabels) {
+        FailureResult failureResult = howToHandleFailure(failure);
+        if (reportEventsAsSpans) {
+            // TODO: replace with reporting as event once events are supported.
+            // Add reporting as callback for when the failure labeling is completed.
+            failureLabels.thenAcceptAsync(
+                    (labels) -> jobFailureMetricReporter.reportJobFailure(failureResult, labels),
+                    componentMainThreadExecutor);
+        }
+        return failureResult;
+    }
+
+    private FailureResult howToHandleFailure(Throwable failure) {
         if (ExecutionFailureHandler.isUnrecoverableError(failure)) {
             return FailureResult.canNotRestart(
                     new JobException("The failure is not recoverable", failure));

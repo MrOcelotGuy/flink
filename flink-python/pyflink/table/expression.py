@@ -1474,6 +1474,15 @@ class Expression(Generic[T]):
         """
         return _unary_op("element")(self)
 
+    def array_append(self, addition) -> 'Expression':
+        """
+        Appends an element to the end of the array and returns the result.
+
+        If the array itself is null, the function will return null. If an element to add is null,
+        the null element will be added to the end of the array.
+        """
+        return _binary_op("arrayAppend")(self, addition)
+
     def array_contains(self, needle) -> 'Expression':
         """
         Returns whether the given element exists in an array.
@@ -1501,6 +1510,15 @@ class Expression(Generic[T]):
         has index 1.
         """
         return _binary_op("arrayPosition")(self, needle)
+
+    def array_prepend(self, addition) -> 'Expression':
+        """
+        Appends an element to the beginning of the array and returns the result.
+
+        If the array itself is null, the function will return null. If an element to add is null,
+        the null element will be added to the beginning of the array.
+        """
+        return _binary_op("arrayPrepend")(self, addition)
 
     def array_remove(self, needle) -> 'Expression':
         """
@@ -1591,6 +1609,15 @@ class Expression(Generic[T]):
         """
         return _unary_op("arrayMin")(self)
 
+    def array_except(self, array) -> 'Expression':
+        """
+        Returns an ARRAY that contains the elements from array1 that are not in array2.
+        If no elements remain after excluding the elements in array2 from array1,
+        the function returns an empty ARRAY. If one or both arguments are NULL,
+        the function returns NULL. The order of the elements from array1 is kept.
+        """
+        return _binary_op("arrayExcept")(self, array)
+
     @property
     def map_keys(self) -> 'Expression':
         """
@@ -1599,6 +1626,17 @@ class Expression(Generic[T]):
         .. seealso:: :py:attr:`~Expression.map_keys`
         """
         return _unary_op("mapKeys")(self)
+
+    def map_union(self, *maps) -> 'Expression':
+        """
+        Returns a map created by merging at least one map. These maps should have a common map type.
+        If there are overlapping keys, the value from 'map2' will overwrite the value from 'map1',
+        the value from 'map3' will overwrite the value from 'map2',  the value from 'mapn' will
+        overwrite the value from 'map(n-1)'. If any of maps is null, return null.
+
+        .. seealso:: :py:attr:`~Expression.map_union`
+        """
+        return _binary_op("mapUnion")(self, *maps)
 
     @property
     def map_values(self) -> 'Expression':

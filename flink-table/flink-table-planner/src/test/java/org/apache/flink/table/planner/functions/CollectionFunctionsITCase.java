@@ -41,9 +41,11 @@ class CollectionFunctionsITCase extends BuiltInFunctionTestBase {
     @Override
     Stream<TestSetSpec> getTestSetSpecs() {
         return Stream.of(
+                        arrayAppendTestCases(),
                         arrayContainsTestCases(),
                         arrayDistinctTestCases(),
                         arrayPositionTestCases(),
+                        arrayArrayPrependTestCases(),
                         arrayRemoveTestCases(),
                         arrayReverseTestCases(),
                         arrayUnionTestCases(),
@@ -52,8 +54,48 @@ class CollectionFunctionsITCase extends BuiltInFunctionTestBase {
                         arrayJoinTestCases(),
                         arraySliceTestCases(),
                         arrayMinTestCases(),
-                        arraySortTestCases())
+                        arraySortTestCases(),
+                        arrayExceptTestCases())
                 .flatMap(s -> s);
+    }
+
+    private Stream<TestSetSpec> arrayAppendTestCases() {
+        return Stream.of(
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.ARRAY_APPEND)
+                        .onFieldsWithData(
+                                new Integer[] {1, 2}, null, new String[] {"Hello", "World"})
+                        .andDataTypes(
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.STRING().notNull()))
+                        .testResult(
+                                $("f0").arrayAppend(null),
+                                "ARRAY_APPEND(f0, NULL)",
+                                new Integer[] {1, 2, null},
+                                DataTypes.ARRAY(DataTypes.INT()))
+                        .testResult(
+                                $("f1").arrayAppend(1),
+                                "ARRAY_APPEND(f1, 1)",
+                                null,
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        .testResult(
+                                $("f2").arrayAppend("!"),
+                                "ARRAY_APPEND(f2, '!')",
+                                new String[] {"Hello", "World", "!"},
+                                DataTypes.ARRAY(DataTypes.STRING().notNull()))
+                        .testResult(
+                                $("f2").arrayAppend(null),
+                                "ARRAY_APPEND(f2, NULL)",
+                                new String[] {"Hello", "World", null},
+                                DataTypes.ARRAY(DataTypes.STRING()))
+                        .testSqlValidationError(
+                                "ARRAY_APPEND(f2, 1)",
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_APPEND(array <ARRAY>, element <ARRAY ELEMENT>)")
+                        .testTableApiValidationError(
+                                $("f2").arrayAppend(1),
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_APPEND(array <ARRAY>, element <ARRAY ELEMENT>)"));
     }
 
     private Stream<TestSetSpec> arrayContainsTestCases() {
@@ -278,6 +320,45 @@ class CollectionFunctionsITCase extends BuiltInFunctionTestBase {
                                 $("f0").arrayPosition(true),
                                 "Invalid input arguments. Expected signatures are:\n"
                                         + "ARRAY_POSITION(haystack <ARRAY>, needle <ARRAY ELEMENT>)"));
+    }
+
+    private Stream<TestSetSpec> arrayArrayPrependTestCases() {
+        return Stream.of(
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.ARRAY_PREPEND)
+                        .onFieldsWithData(
+                                new Integer[] {1, 2}, null, new String[] {"Hello", "World"})
+                        .andDataTypes(
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.STRING().notNull()))
+                        .testResult(
+                                $("f0").arrayPrepend(1),
+                                "ARRAY_PREPEND(f0, 1)",
+                                new Integer[] {1, 1, 2},
+                                DataTypes.ARRAY(DataTypes.INT()))
+                        .testResult(
+                                $("f1").arrayPrepend(1),
+                                "ARRAY_PREPEND(f1, 1)",
+                                null,
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        .testResult(
+                                $("f2").arrayPrepend("!"),
+                                "ARRAY_PREPEND(f2, '!')",
+                                new String[] {"!", "Hello", "World"},
+                                DataTypes.ARRAY(DataTypes.STRING().notNull()))
+                        .testResult(
+                                $("f2").arrayPrepend(null),
+                                "ARRAY_PREPEND(f2, NULL)",
+                                new String[] {null, "Hello", "World"},
+                                DataTypes.ARRAY(DataTypes.STRING()))
+                        .testSqlValidationError(
+                                "ARRAY_PREPEND(1, f2)",
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_PREPEND(array <ARRAY>, element <ARRAY ELEMENT>)")
+                        .testTableApiValidationError(
+                                $("f2").arrayPrepend(1),
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_PREPEND(array <ARRAY>, element <ARRAY ELEMENT>)"));
     }
 
     private Stream<TestSetSpec> arrayRemoveTestCases() {
@@ -1515,5 +1596,129 @@ class CollectionFunctionsITCase extends BuiltInFunctionTestBase {
                                     LocalDate.of(2012, 5, 16)
                                 },
                                 DataTypes.ARRAY(DataTypes.DATE())));
+    }
+
+    private Stream<TestSetSpec> arrayExceptTestCases() {
+        return Stream.of(
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.ARRAY_EXCEPT)
+                        .onFieldsWithData(
+                                new Integer[] {1, 2, 2},
+                                null,
+                                new Row[] {
+                                    Row.of(true, LocalDate.of(2022, 4, 20)),
+                                    Row.of(true, LocalDate.of(1990, 10, 14)),
+                                    null
+                                },
+                                new Integer[] {null, null, 1},
+                                new Integer[][] {
+                                    new Integer[] {1, null, 3}, new Integer[] {0}, new Integer[] {1}
+                                },
+                                new Map[] {
+                                    CollectionUtil.map(entry(1, "a"), entry(2, "b")),
+                                    CollectionUtil.map(entry(3, "c"), entry(4, "d")),
+                                    null
+                                },
+                                new Integer[] {1, 2, 3, 2, 4, 2})
+                        .andDataTypes(
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(
+                                        DataTypes.ROW(DataTypes.BOOLEAN(), DataTypes.DATE())),
+                                DataTypes.ARRAY(DataTypes.INT()),
+                                DataTypes.ARRAY(DataTypes.ARRAY(DataTypes.INT())),
+                                DataTypes.ARRAY(DataTypes.MAP(DataTypes.INT(), DataTypes.STRING())),
+                                DataTypes.ARRAY(DataTypes.INT()))
+                        // ARRAY<INT>
+                        .testResult(
+                                $("f0").arrayExcept(new Integer[] {1, null, 4}),
+                                "ARRAY_EXCEPT(f0, ARRAY[1, NULL, 4])",
+                                new Integer[] {2, 2},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        .testResult(
+                                $("f0").arrayExcept(new Integer[] {1}),
+                                "ARRAY_EXCEPT(f0, ARRAY[1])",
+                                new Integer[] {2, 2},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        .testResult(
+                                $("f0").arrayExcept(new Integer[] {42}),
+                                "ARRAY_EXCEPT(f0, ARRAY[42])",
+                                new Integer[] {1, 2, 2},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        .testResult(
+                                $("f6").arrayExcept(new Integer[] {2, 2}),
+                                "ARRAY_EXCEPT(f6, ARRAY[2, 2])",
+                                new Integer[] {1, 3, 4, 2},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        // arrayTwo is NULL
+                        .testResult(
+                                $("f0").arrayExcept(
+                                                lit(null, DataTypes.ARRAY(DataTypes.INT()))
+                                                        .cast(DataTypes.ARRAY(DataTypes.INT()))),
+                                "ARRAY_EXCEPT(f0, CAST(NULL AS ARRAY<INT>))",
+                                null,
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        // arrayTwo contains null elements
+                        .testResult(
+                                $("f0").arrayExcept(new Integer[] {null, 2}),
+                                "ARRAY_EXCEPT(f0, ARRAY[null, 2])",
+                                new Integer[] {1, 2},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        // arrayOne is NULL
+                        .testResult(
+                                $("f1").arrayExcept(new Integer[] {1, 2, 3}),
+                                "ARRAY_EXCEPT(f1, ARRAY[1,2,3])",
+                                null,
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        // arrayOne contains null elements
+                        .testResult(
+                                $("f3").arrayExcept(new Integer[] {null, 42}),
+                                "ARRAY_EXCEPT(f3, ARRAY[null, 42])",
+                                new Integer[] {null, 1},
+                                DataTypes.ARRAY(DataTypes.INT()).nullable())
+                        // ARRAY<ROW<BOOLEAN, DATE>>
+                        .testResult(
+                                $("f2").arrayExcept(
+                                                new Row[] {
+                                                    Row.of(true, LocalDate.of(1990, 10, 14))
+                                                }),
+                                "ARRAY_EXCEPT(f2, ARRAY[(TRUE, DATE '1990-10-14')])",
+                                new Row[] {Row.of(true, LocalDate.of(2022, 4, 20)), null},
+                                DataTypes.ARRAY(
+                                                DataTypes.ROW(
+                                                        DataTypes.BOOLEAN(), DataTypes.DATE()))
+                                        .nullable())
+                        // ARRAY<ARRAY<INT>>
+                        .testResult(
+                                $("f4").arrayExcept(new Integer[][] {new Integer[] {0}}),
+                                "ARRAY_EXCEPT(f4, ARRAY[ARRAY[0]])",
+                                new Integer[][] {new Integer[] {1, null, 3}, new Integer[] {1}},
+                                DataTypes.ARRAY(DataTypes.ARRAY(DataTypes.INT()).nullable()))
+                        // ARRAY<MAP<INT, STRING>> with NULL elements
+                        .testResult(
+                                $("f5").arrayExcept(
+                                                new Map[] {
+                                                    CollectionUtil.map(entry(3, "c"), entry(4, "d"))
+                                                }),
+                                "ARRAY_EXCEPT(f5, ARRAY[MAP[3, 'c', 4, 'd']])",
+                                new Map[] {CollectionUtil.map(entry(1, "a"), entry(2, "b")), null},
+                                DataTypes.ARRAY(DataTypes.MAP(DataTypes.INT(), DataTypes.STRING()))
+                                        .nullable())
+                        // Invalid signatures
+                        .testSqlValidationError(
+                                "ARRAY_EXCEPT(f0, TRUE)",
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_EXCEPT(<COMMON>, <COMMON>)")
+                        .testTableApiValidationError(
+                                $("f0").arrayExcept(true),
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_EXCEPT(<COMMON>, <COMMON>)")
+                        .testSqlValidationError(
+                                "ARRAY_EXCEPT(f0, ARRAY['hi', 'there'])",
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_EXCEPT(<COMMON>, <COMMON>)")
+                        .testTableApiValidationError(
+                                $("f0").arrayExcept(new String[] {"hi", "there"}),
+                                "Invalid input arguments. Expected signatures are:\n"
+                                        + "ARRAY_EXCEPT(<COMMON>, <COMMON>)"));
     }
 }

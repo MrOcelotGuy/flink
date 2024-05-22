@@ -404,11 +404,13 @@ See the [History Server Docs]({{< ref "docs/deployment/advanced/historyserver" >
 ----
 ----
 
-# Artifact Fetching
+# User Artifact Management
 
-Flink can fetch user artifacts stored locally, on remote DFS, or accessible via an HTTP(S) endpoint.
+Flink is capable to upload and fetch local user artifacts in Application Mode. An artifact can be the actual job archive, a UDF that is packaged separately, etc.
+1. Uploading local artifacts to a DFS is a Kubernetes specific feature, see the [Kubernetes](#kubernetes) section and look for `kubernetes.artifacts.*` prefixed options.
+2. Fetching remote artifacts on the deployed application cluster is supported from DFS or an HTTP(S) endpoint.
 {{< hint info >}}
-**Note:** This is only supported in Standalone Application Mode and Native Kubernetes Application Mode.
+**Note:** Artifact Fetching is supported in Standalone Application Mode and Native Kubernetes Application Mode.
 {{< /hint >}}
 
 {{< generated/artifact_fetch_configuration >}}
@@ -419,7 +421,6 @@ Flink can fetch user artifacts stored locally, on remote DFS, or accessible via 
 # Execution
 
 {{< generated/deployment_configuration >}}
-{{< generated/savepoint_config_configuration >}}
 {{< generated/execution_configuration >}}
 
 ### Pipeline
@@ -429,6 +430,10 @@ Flink can fetch user artifacts stored locally, on remote DFS, or accessible via 
 ### Checkpointing
 
 {{< generated/execution_checkpointing_configuration >}}
+
+### Recovery
+
+{{< generated/state_recovery_configuration >}}
 
 ----
 ----
@@ -455,9 +460,9 @@ Please refer to the [Debugging Classloading Docs]({{< ref "docs/ops/debugging/de
 
 {{< generated/expert_state_backends_section >}}
 
-### State Backends Latency Tracking Options
+### State Latency Tracking Options
 
-{{< generated/state_backend_latency_tracking_section >}}
+{{< generated/state_latency_tracking_section >}}
 
 ### Advanced RocksDB State Backends Options
 
@@ -468,11 +473,11 @@ Advanced options to tune RocksDB and RocksDB checkpoints.
 ### State Changelog Options
 
 Please refer to [State Backends]({{< ref "docs/ops/state/state_backends#enabling-changelog" >}}) for information on
-using State Changelog.
+using State Changelog. {{< generated/state_changelog_section >}}
 
 #### FileSystem-based Changelog options
 
-These settings take effect when the `state.backend.changelog.storage`  is set to `filesystem` (see [above](#state-backend-changelog-storage)).
+These settings take effect when the `state.changelog.storage`  is set to `filesystem` (see [above](#state-changelog-storage)).
 {{< generated/fs_state_changelog_configuration >}}
 
 **RocksDB Configurable Options**
@@ -561,7 +566,7 @@ These options are for the network stack that handles the streaming and batch dat
 Flink uses Pekko for RPC between components (JobManager/TaskManager/ResourceManager).
 Flink does not use Pekko for data transport.
 
-{{< generated/akka_configuration >}}
+{{< generated/rpc_configuration >}}
 
 ----
 ----

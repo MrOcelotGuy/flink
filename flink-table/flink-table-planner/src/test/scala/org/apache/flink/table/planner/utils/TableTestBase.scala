@@ -19,7 +19,6 @@ package org.apache.flink.table.planner.utils
 
 import org.apache.flink.FlinkVersion
 import org.apache.flink.api.common.typeinfo.{AtomicType, TypeInformation}
-import org.apache.flink.api.dag.Transformation
 import org.apache.flink.api.java.typeutils.{PojoTypeInfo, RowTypeInfo, TupleTypeInfo}
 import org.apache.flink.api.scala.typeutils.CaseClassTypeInfo
 import org.apache.flink.configuration.BatchExecutionOptions
@@ -88,7 +87,7 @@ import org.junit.jupiter.api.extension.{BeforeEachCallback, ExtendWith, Extensio
 import org.junit.jupiter.api.io.TempDir
 import org.junit.platform.commons.support.AnnotationSupport
 
-import java.io.{File, IOException, PrintWriter, StringWriter}
+import java.io.{File, IOException}
 import java.net.URL
 import java.nio.file.{Files, Path, Paths}
 import java.time.Duration
@@ -621,6 +620,28 @@ abstract class TableTestUtilBase(test: TableTestBase, isStreamingMode: Boolean) 
    * Verify whether the optimized rel plan for the given SELECT query does not contain the
    * `notExpected` strings.
    */
+  def verifyRelPlanExpected(query: String, notExpected: String*): Unit = {
+    verifyRelPlanExpected(getTableEnv.sqlQuery(query), notExpected: _*)
+  }
+
+  /**
+   * Verify whether the optimized rel plan for the given [[Table]] does not contain the
+   * `notExpected` strings.
+   */
+  def verifyRelPlanExpected(table: Table, expected: String*): Unit = {
+    require(expected.nonEmpty)
+    val relNode = TableTestUtil.toRelNode(table)
+    val optimizedRel = getPlanner.optimize(relNode)
+    val optimizedPlan = getOptimizedRelPlan(Array(optimizedRel), Array.empty, withRowType = false)
+    val result = expected.forall(optimizedPlan.contains(_))
+    val message = s"\nactual plan:\n$optimizedPlan\nexpected:\n${expected.mkString(", ")}"
+    assertTrue(result, message)
+  }
+
+  /**
+   * Verify whether the optimized rel plan for the given SELECT query does not contain the
+   * `notExpected` strings.
+   */
   def verifyRelPlanNotExpected(query: String, notExpected: String*): Unit = {
     verifyRelPlanNotExpected(getTableEnv.sqlQuery(query), notExpected: _*)
   }
@@ -700,20 +721,6 @@ abstract class TableTestUtilBase(test: TableTestBase, isStreamingMode: Boolean) 
       withRowType = false,
       Array(PlanKind.AST, PlanKind.OPT_EXEC),
       () => Unit,
-      withQueryBlockAlias = false)
-  }
-
-  /**
-   * Verify the AST (abstract syntax tree), the optimized exec plan and tranformation for the given
-   * SELECT query. Note: An exception will be thrown if the given sql can't be translated to exec
-   * plan and transformation result is wrong.
-   */
-  def verifyTransformation(query: String): Unit = {
-    doVerifyPlan(
-      query,
-      Array.empty[ExplainDetail],
-      withRowType = false,
-      Array(PlanKind.AST, PlanKind.OPT_EXEC, PlanKind.TRANSFORM),
       withQueryBlockAlias = false)
   }
 
@@ -1055,14 +1062,6 @@ abstract class TableTestUtilBase(test: TableTestBase, isStreamingMode: Boolean) 
       ""
     }
 
-    // build transformation graph if `expectedPlans` contains TRANSFORM
-    val transformation = if (expectedPlans.contains(PlanKind.TRANSFORM)) {
-      val optimizedNodes = getPlanner.translateToExecNodeGraph(optimizedRels, true)
-      System.lineSeparator + getTransformations(getPlanner.translateToPlan(optimizedNodes))
-    } else {
-      ""
-    }
-
     // check whether the sql equals to the expected if the `relNodes` are translated from sql
     assertSqlEqualsOrExpandFunc()
     // check ast plan
@@ -1080,10 +1079,6 @@ abstract class TableTestUtilBase(test: TableTestBase, isStreamingMode: Boolean) 
     // check optimized exec plan
     if (expectedPlans.contains(PlanKind.OPT_EXEC)) {
       assertEqualsOrExpand("optimized exec plan", optimizedExecPlan, expand = false)
-    }
-    // check transformation graph
-    if (expectedPlans.contains(PlanKind.TRANSFORM)) {
-      assertEqualsOrExpand("transformation", transformation, expand = false)
     }
   }
 
@@ -1142,25 +1137,6 @@ abstract class TableTestUtilBase(test: TableTestBase, isStreamingMode: Boolean) 
             s"actual plan is ${o.getClass.getSimpleName} plan.")
     }
     replaceEstimatedCost(optimizedPlan)
-  }
-
-  private def getTransformations(transformations: java.util.List[Transformation[_]]): String = {
-    val stringWriter = new StringWriter()
-    val printWriter = new PrintWriter(stringWriter)
-    transformations.foreach(transformation => getTransformation(printWriter, transformation, 0))
-    stringWriter.toString
-  }
-
-  private def getTransformation(
-      printWriter: PrintWriter,
-      transformation: Transformation[_],
-      level: Int): Unit = {
-    if (level == 0) {
-      printWriter.println(transformation.toStringWithoutId)
-    } else {
-      printWriter.println(("\t" * level) + "+- " + transformation.toStringWithoutId)
-    }
-    transformation.getInputs.foreach(child => getTransformation(printWriter, child, level + 1))
   }
 
   /** Replace the estimated costs for the given plan, because it may be unstable. */
@@ -1670,9 +1646,6 @@ object PlanKind extends Enumeration {
 
   /** Optimized Execution Plan */
   val OPT_EXEC: Value = Value("OPT_EXEC")
-
-  /** Transformation */
-  val TRANSFORM: Value = Value("TRANSFORM")
 }
 
 object TableTestUtil {

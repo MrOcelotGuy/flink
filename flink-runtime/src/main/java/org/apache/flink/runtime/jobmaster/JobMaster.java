@@ -90,6 +90,7 @@ import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.scheduler.SchedulerNG;
 import org.apache.flink.runtime.shuffle.JobShuffleContext;
 import org.apache.flink.runtime.shuffle.JobShuffleContextImpl;
+import org.apache.flink.runtime.shuffle.PartitionWithMetrics;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.slots.ResourceRequirement;
 import org.apache.flink.runtime.state.KeyGroupRange;
@@ -104,6 +105,7 @@ import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.InstantiationUtil;
+import org.apache.flink.util.MdcUtils;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.concurrent.FutureUtils;
 
@@ -114,9 +116,11 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -250,7 +254,11 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
             long initializationTimestamp)
             throws Exception {
 
-        super(rpcService, RpcServiceUtils.createRandomName(JOB_MANAGER_NAME), jobMasterId);
+        super(
+                rpcService,
+                RpcServiceUtils.createRandomName(JOB_MANAGER_NAME),
+                jobMasterId,
+                MdcUtils.asContextData(jobGraph.getJobID()));
 
         final ExecutionDeploymentReconciliationHandler executionStateReconciliationHandler =
                 new ExecutionDeploymentReconciliationHandler() {
@@ -291,6 +299,10 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
                         }
                     }
                 };
+        final String jobName = jobGraph.getName();
+        final JobID jid = jobGraph.getJobID();
+
+        log.info("Initializing job '{}' ({}).", jobName, jid);
 
         this.executionDeploymentTracker = executionDeploymentTracker;
         this.executionDeploymentReconciler =
@@ -302,8 +314,9 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
         this.rpcTimeout = jobMasterConfiguration.getRpcTimeout();
         this.highAvailabilityServices = checkNotNull(highAvailabilityService);
         this.blobWriter = jobManagerSharedServices.getBlobWriter();
-        this.futureExecutor = jobManagerSharedServices.getFutureExecutor();
-        this.ioExecutor = jobManagerSharedServices.getIoExecutor();
+        this.futureExecutor =
+                MdcUtils.scopeToJob(jid, jobManagerSharedServices.getFutureExecutor());
+        this.ioExecutor = MdcUtils.scopeToJob(jid, jobManagerSharedServices.getIoExecutor());
         this.jobCompletionActions = checkNotNull(jobCompletionActions);
         this.fatalErrorHandler = checkNotNull(fatalErrorHandler);
         this.userCodeLoader = checkNotNull(userCodeLoader);
@@ -312,11 +325,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
                 jobMasterConfiguration
                         .getConfiguration()
                         .get(JobManagerOptions.RETRIEVE_TASK_MANAGER_HOSTNAME);
-
-        final String jobName = jobGraph.getName();
-        final JobID jid = jobGraph.getJobID();
-
-        log.info("Initializing job '{}' ({}).", jobName, jid);
 
         resourceManagerLeaderRetriever =
                 highAvailabilityServices.getResourceManagerLeaderRetriever();
@@ -538,12 +546,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
     @Override
     public CompletableFuture<Acknowledge> disconnectTaskManager(
             final ResourceID resourceID, final Exception cause) {
-        log.info(
-                "Disconnect TaskExecutor {} because: {}",
-                resourceID.getStringWithMetadata(),
-                cause.getMessage(),
-                ExceptionUtils.returnExceptionIfUnexpected(cause.getCause()));
-        ExceptionUtils.logExceptionIfExcepted(cause.getCause(), log);
 
         taskManagerHeartbeatManager.unmonitorTarget(resourceID);
         slotPoolService.releaseTaskManager(resourceID, cause);
@@ -552,6 +554,13 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
         TaskManagerRegistration taskManagerRegistration = registeredTaskManagers.remove(resourceID);
 
         if (taskManagerRegistration != null) {
+            log.info(
+                    "Disconnect TaskExecutor {} because: {}",
+                    resourceID.getStringWithMetadata(),
+                    cause.getMessage(),
+                    ExceptionUtils.returnExceptionIfUnexpected(cause.getCause()));
+            ExceptionUtils.logExceptionIfExcepted(cause.getCause(), log);
+
             taskManagerRegistration
                     .getTaskExecutorGateway()
                     .disconnectJobManager(jobGraph.getJobID(), cause);
@@ -949,6 +958,28 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
             future.completeExceptionally(throwable);
         }
         return future;
+    }
+
+    @Override
+    public CompletableFuture<Collection<PartitionWithMetrics>>
+            getAllPartitionWithMetricsOnTaskManagers() {
+        final List<CompletableFuture<Collection<PartitionWithMetrics>>> allFutures =
+                new ArrayList<>();
+        registeredTaskManagers
+                .values()
+                .forEach(
+                        taskManager ->
+                                allFutures.add(
+                                        taskManager
+                                                .getTaskExecutorGateway()
+                                                .getAndRetainPartitionWithMetrics(
+                                                        jobGraph.getJobID())));
+        return FutureUtils.combineAll(allFutures)
+                .thenApply(
+                        partitions ->
+                                partitions.stream()
+                                        .flatMap(Collection::stream)
+                                        .collect(Collectors.toList()));
     }
 
     @Override

@@ -44,20 +44,20 @@ import org.apache.flink.api.connector.source.SplitsAssignment;
 import org.apache.flink.changelog.fs.FsStateChangelogStorageFactory;
 import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ExternalizedCheckpointRetention;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.RpcOptions;
 import org.apache.flink.configuration.StateBackendOptions;
+import org.apache.flink.configuration.StateRecoveryOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.runtime.shuffle.ShuffleServiceOptions;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.RichCoFlatMapFunction;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
@@ -104,8 +104,16 @@ import static org.apache.flink.shaded.guava31.com.google.common.collect.Iterable
 import static org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions.CHECKPOINTING_TIMEOUT;
 import static org.apache.flink.util.Preconditions.checkState;
 
-/** Base class for tests related to unaligned checkpoints. */
-@Category(FailsWithAdaptiveScheduler.class) // FLINK-21689
+/**
+ * Base class for tests related to unaligned checkpoints.
+ *
+ * <p>This test base relies on restarting the subtasks within the scheduler to trigger a reset of
+ * the operators. The operator reset is counted in the LongSource. The job will terminate if the
+ * number of expected restarts is reached. The AdaptiveScheduler won't trigger the operator reset
+ * resulting in the test running forever. This is why this test suite is disabled for the {@link
+ * org.apache.flink.runtime.scheduler.adaptive.AdaptiveScheduler}.
+ */
+@Category(FailsWithAdaptiveScheduler.class)
 public abstract class UnalignedCheckpointTestBase extends TestLogger {
     protected static final Logger LOG = LoggerFactory.getLogger(UnalignedCheckpointTestBase.class);
     protected static final String NUM_INPUTS = "inputs_";
@@ -755,9 +763,8 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
             env.getCheckpointConfig().setForceUnalignedCheckpoints(true);
             if (generateCheckpoint) {
                 env.getCheckpointConfig()
-                        .setExternalizedCheckpointCleanup(
-                                CheckpointConfig.ExternalizedCheckpointCleanup
-                                        .RETAIN_ON_CANCELLATION);
+                        .setExternalizedCheckpointRetention(
+                                ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
             }
         }
 
@@ -769,9 +776,7 @@ public abstract class UnalignedCheckpointTestBase extends TestLogger {
             conf.set(StateBackendOptions.STATE_BACKEND, "filesystem");
             conf.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir.toURI().toString());
             if (restoreCheckpoint != null) {
-                conf.set(
-                        SavepointConfigOptions.SAVEPOINT_PATH,
-                        restoreCheckpoint.toURI().toString());
+                conf.set(StateRecoveryOptions.SAVEPOINT_PATH, restoreCheckpoint.toURI().toString());
             }
 
             conf.set(

@@ -128,7 +128,7 @@ public abstract class AbstractStreamOperator<OUT>
      *
      * <p>This is for elements from the first input.
      */
-    private transient KeySelector<?, ?> stateKeySelector1;
+    protected transient KeySelector<?, ?> stateKeySelector1;
 
     /**
      * {@code KeySelector} for extracting a key from an element being processed. This is used to
@@ -136,11 +136,11 @@ public abstract class AbstractStreamOperator<OUT>
      *
      * <p>This is for elements from the second input.
      */
-    private transient KeySelector<?, ?> stateKeySelector2;
+    protected transient KeySelector<?, ?> stateKeySelector2;
 
-    private transient StreamOperatorStateHandler stateHandler;
+    protected transient StreamOperatorStateHandler stateHandler;
 
-    private transient InternalTimeServiceManager<?> timeServiceManager;
+    protected transient InternalTimeServiceManager<?> timeServiceManager;
 
     // --------------- Metrics ---------------------------
 
@@ -153,10 +153,8 @@ public abstract class AbstractStreamOperator<OUT>
 
     protected transient ProcessingTimeService processingTimeService;
 
-    protected transient RecordAttributes lastRecordAttributes1 =
-            RecordAttributes.EMPTY_RECORD_ATTRIBUTES;
-    protected transient RecordAttributes lastRecordAttributes2 =
-            RecordAttributes.EMPTY_RECORD_ATTRIBUTES;
+    protected transient RecordAttributes lastRecordAttributes1;
+    protected transient RecordAttributes lastRecordAttributes2;
 
     // ------------------------------------------------------------------------
     //  Life Cycle
@@ -235,6 +233,9 @@ public abstract class AbstractStreamOperator<OUT>
 
         stateKeySelector1 = config.getStatePartitioner(0, getUserCodeClassloader());
         stateKeySelector2 = config.getStatePartitioner(1, getUserCodeClassloader());
+
+        lastRecordAttributes1 = RecordAttributes.EMPTY_RECORD_ATTRIBUTES;
+        lastRecordAttributes2 = RecordAttributes.EMPTY_RECORD_ATTRIBUTES;
     }
 
     /**
@@ -252,7 +253,7 @@ public abstract class AbstractStreamOperator<OUT>
     }
 
     @Override
-    public final void initializeState(StreamTaskStateInitializer streamTaskStateManager)
+    public void initializeState(StreamTaskStateInitializer streamTaskStateManager)
             throws Exception {
 
         final TypeSerializer<?> keySerializer =
@@ -338,7 +339,7 @@ public abstract class AbstractStreamOperator<OUT>
     }
 
     @Override
-    public final OperatorSnapshotFutures snapshotState(
+    public OperatorSnapshotFutures snapshotState(
             long checkpointId,
             long timestamp,
             CheckpointOptions checkpointOptions,

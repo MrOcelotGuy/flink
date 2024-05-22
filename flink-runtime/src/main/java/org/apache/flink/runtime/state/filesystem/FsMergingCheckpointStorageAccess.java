@@ -24,16 +24,17 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.checkpoint.filemerging.FileMergingSnapshotManager;
 import org.apache.flink.runtime.checkpoint.filemerging.FileMergingSnapshotManager.SubtaskKey;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.Closeable;
 import java.io.IOException;
 
 /** An implementation of file merging checkpoint storage to file systems. */
-public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess {
+public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess
+        implements Closeable {
 
     /** FileMergingSnapshotManager manages files and meta information for checkpoints. */
     private final FileMergingSnapshotManager fileMergingSnapshotManager;
@@ -42,7 +43,6 @@ public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess 
     private final FileMergingSnapshotManager.SubtaskKey subtaskKey;
 
     public FsMergingCheckpointStorageAccess(
-            FileSystem fs,
             Path checkpointBaseDirectory,
             @Nullable Path defaultSavepointDirectory,
             JobID jobId,
@@ -52,7 +52,10 @@ public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess 
             Environment environment)
             throws IOException {
         super(
-                fs,
+                // Multiple subtask/threads would share one output stream,
+                // SafetyNetWrapperFileSystem cannot be used to prevent different threads from
+                // interfering with each other when exiting.
+                FileSystem.getUnguardedFileSystem(checkpointBaseDirectory.toUri()),
                 checkpointBaseDirectory,
                 defaultSavepointDirectory,
                 false,
@@ -60,10 +63,7 @@ public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess 
                 fileSizeThreshold,
                 writeBufferSize);
         this.fileMergingSnapshotManager = fileMergingSnapshotManager;
-        this.subtaskKey =
-                new SubtaskKey(
-                        OperatorID.fromJobVertexID(environment.getJobVertexId()),
-                        environment.getTaskInfo());
+        this.subtaskKey = SubtaskKey.of(environment);
     }
 
     @Override
@@ -113,5 +113,11 @@ public class FsMergingCheckpointStorageAccess extends FsCheckpointStorageAccess 
                     fileMergingSnapshotManager,
                     checkpointId);
         }
+    }
+
+    /** This will be registered to resource closer of {@code StreamTask}. */
+    @Override
+    public void close() {
+        fileMergingSnapshotManager.unregisterSubtask(subtaskKey);
     }
 }

@@ -628,6 +628,9 @@ collection:
   - sql: map ‘[’ value ‘]’
     table: MAP.at(ANY)
     description: Returns the value specified by key value in map.
+  - sql: ARRAY_APPEND(array, element)
+    table: array.arrayAppend(element)
+    description: Appends an element to the end of the array and returns the result. If the array itself is null, the function will return null. If an element to add is null, the null element will be added to the end of the array.
   - sql: ARRAY_CONTAINS(haystack, needle)
     table: haystack.arrayContains(needle)
     description: Returns whether the given element exists in an array. Checking for null elements in the array is supported. If the array itself is null, the function will return null. The given element is cast implicitly to the array's element type if necessary.
@@ -637,6 +640,9 @@ collection:
   - sql: ARRAY_POSITION(haystack, needle)
     table: haystack.arrayPosition(needle)
     description: Returns the position of the first occurrence of element in the given array as int. Returns 0 if the given value could not be found in the array. Returns null if either of the arguments are null. And this is not zero based, but 1-based index. The first element in the array has index 1.
+  - sql: ARRAY_PREPEND(array, element)
+    table: array.arrayPrepend(element)
+    description: Appends an element to the beginning of the array and returns the result. If the array itself is null, the function will return null. If an element to add is null, the null element will be added to the beginning of the array.
   - sql: ARRAY_REMOVE(haystack, needle)
     table: haystack.arrayRemove(needle)
     description: Removes all elements that equal to element from array. If the array itself is null, the function will return null. Keeps ordering of elements.
@@ -667,6 +673,9 @@ collection:
   - sql: MAP_KEYS(map)
     table: MAP.mapKeys()
     description: Returns the keys of the map as array. No order guaranteed.
+  - sql: MAP_UNION(map1, ...)
+    table: map1.mapUnion(...)
+    description: Returns a map created by merging at least one map. These maps should have a common map type. If there are overlapping keys, the value from 'map2' will overwrite the value from 'map1',  the value from 'map3' will overwrite the value from 'map2',  the value from 'mapn' will overwrite the value from 'map(n-1)'. If any of maps is null, return null.
   - sql: MAP_VALUES(map)
     table: MAP.mapValues()
     description: Returns the values of the map as array. No order guaranteed.
@@ -676,7 +685,10 @@ collection:
   - sql: MAP_FROM_ARRAYS(array_of_keys, array_of_values)
     table: mapFromArrays(array_of_keys, array_of_values)
     description: Returns a map created from an arrays of keys and values. Note that the lengths of two arrays should be the same.
-
+  - sql: ARRAY_EXCEPT(array1, array2)
+    table: arrayOne.arrayExcept(arrayTwo)
+    description: Returns an ARRAY that contains the elements from array1 that are not in array2. If no elements remain after excluding the elements in array2 from array1, the function returns an empty ARRAY. If one or both arguments are NULL, the function returns NULL. The order of the elements from array1 is kept.
+    
 json:
   - sql: IS JSON [ { VALUE | SCALAR | ARRAY | OBJECT } ]
     table: STRING.isJson([JsonType type])

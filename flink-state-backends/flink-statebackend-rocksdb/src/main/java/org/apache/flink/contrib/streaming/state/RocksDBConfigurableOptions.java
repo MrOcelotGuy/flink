@@ -18,6 +18,7 @@
 
 package org.apache.flink.contrib.streaming.state;
 
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.description.Description;
@@ -53,6 +54,7 @@ import static org.rocksdb.InfoLogLevel.INFO_LEVEL;
  * PredefinedOptions}, and then a user-defined {@link RocksDBOptionsFactory} may override the
  * configurations here.
  */
+@PublicEvolving
 public class RocksDBConfigurableOptions implements Serializable {
 
     // --------------------------------------------------------------------------
@@ -323,6 +325,13 @@ public class RocksDBConfigurableOptions implements Serializable {
                     .defaultValue(Boolean.FALSE)
                     .withDescription(
                             "If true, an async compaction of RocksDB is started after every restore after which we detect keys (including tombstones) in the database that are outside the key-groups range of the backend.");
+
+    public static final ConfigOption<Boolean> USE_DELETE_FILES_IN_RANGE_DURING_RESCALING =
+            key("state.backend.rocksdb.rescaling.use-delete-files-in-range")
+                    .booleanType()
+                    .defaultValue(Boolean.FALSE)
+                    .withDescription(
+                            "If true, during rescaling, the deleteFilesInRange API will be invoked to clean up the useless files so that local disk space can be reclaimed more promptly.");
 
     static final ConfigOption<?>[] CANDIDATE_CONFIGS =
             new ConfigOption<?>[] {

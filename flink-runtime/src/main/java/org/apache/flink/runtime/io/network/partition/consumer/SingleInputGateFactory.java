@@ -54,7 +54,6 @@ import org.apache.flink.util.MathUtils;
 import org.apache.flink.util.clock.SystemClock;
 import org.apache.flink.util.function.SupplierWithException;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -160,16 +159,14 @@ public class SingleInputGateFactory {
                         configuredNetworkBuffersPerChannel,
                         floatingNetworkBuffersPerGate,
                         igdd.getConsumedPartitionType(),
-                        calculateNumChannels(
-                                igdd.getShuffleDescriptors().length,
-                                igdd.getConsumedSubpartitionIndexRange().size(),
-                                isSharedInputChannelSupported),
-                        tieredStorageConfiguration != null);
+                        calculateNumNonLocalChannels(igdd, isSharedInputChannelSupported),
+                        tieredStorageConfiguration);
         SupplierWithException<BufferPool, IOException> bufferPoolFactory =
                 createBufferPoolFactory(
                         networkBufferPool,
-                        gateBuffersSpec.getRequiredFloatingBuffers(),
-                        gateBuffersSpec.getTotalFloatingBuffers());
+                        gateBuffersSpec.getExpectedBuffersPerGate(),
+                        gateBuffersSpec.getMinBuffersPerGate(),
+                        gateBuffersSpec.getMaxBuffersPerGate());
 
         BufferDecompressor bufferDecompressor = null;
         if (igdd.getConsumedPartitionType().supportCompression()
@@ -371,6 +368,26 @@ public class SingleInputGateFactory {
         }
     }
 
+    private int calculateNumNonLocalChannels(
+            @Nonnull InputGateDeploymentDescriptor igdd, boolean isSharedInputChannelSupported) {
+        int count = 0;
+        for (ShuffleDescriptor shuffleDescriptor : igdd.getShuffleDescriptors()) {
+            boolean isLocal =
+                    applyWithShuffleTypeCheck(
+                            NettyShuffleDescriptor.class,
+                            shuffleDescriptor,
+                            unknownShuffleDescriptor -> false,
+                            nettyShuffleDescriptor -> isLocalInputChannel(nettyShuffleDescriptor));
+            if (!isLocal) {
+                count +=
+                        isSharedInputChannelSupported
+                                ? 1
+                                : igdd.getConsumedSubpartitionIndexRange().size();
+            }
+        }
+        return count;
+    }
+
     @VisibleForTesting
     protected InputChannel createKnownInputChannel(
             SingleInputGate inputGate,
@@ -381,7 +398,7 @@ public class SingleInputGateFactory {
             ChannelStatistics channelStatistics,
             InputChannelMetrics metrics) {
         ResultPartitionID partitionId = inputChannelDescriptor.getResultPartitionID();
-        if (inputChannelDescriptor.isLocalTo(taskExecutorResourceId)) {
+        if (isLocalInputChannel(inputChannelDescriptor)) {
             // Consuming task is deployed to the same TaskManager as the partition => local
             channelStatistics.numLocalChannels++;
             return new LocalRecoveredInputChannel(
@@ -413,13 +430,19 @@ public class SingleInputGateFactory {
         }
     }
 
+    private boolean isLocalInputChannel(NettyShuffleDescriptor inputChannelDescriptor) {
+        return inputChannelDescriptor.isLocalTo(taskExecutorResourceId);
+    }
+
     @VisibleForTesting
     static SupplierWithException<BufferPool, IOException> createBufferPoolFactory(
             BufferPoolFactory bufferPoolFactory,
-            int minFloatingBuffersPerGate,
-            int maxFloatingBuffersPerGate) {
-        Pair<Integer, Integer> pair = Pair.of(minFloatingBuffersPerGate, maxFloatingBuffersPerGate);
-        return () -> bufferPoolFactory.createBufferPool(pair.getLeft(), pair.getRight());
+            int expectedBuffersPerGate,
+            int minBuffersPerGate,
+            int maxBuffersPerGate) {
+        return () ->
+                bufferPoolFactory.createBufferPool(
+                        expectedBuffersPerGate, minBuffersPerGate, maxBuffersPerGate);
     }
 
     /** Statistics of input channels. */

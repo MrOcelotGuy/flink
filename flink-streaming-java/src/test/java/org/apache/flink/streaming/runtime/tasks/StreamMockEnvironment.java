@@ -54,6 +54,7 @@ import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.operators.testutils.MockInputSplitProvider;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.state.CheckpointStorageAccess;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskexecutor.TestGlobalAggregateManager;
@@ -79,7 +80,7 @@ import java.util.concurrent.Future;
 import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createExecutionAttemptId;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
 
 /** Mock {@link Environment}. */
@@ -138,6 +139,8 @@ public class StreamMockEnvironment implements Environment {
             UnregisteredMetricGroups.createUnregisteredTaskMetricGroup();
 
     private CheckpointResponder checkpointResponder = NoOpCheckpointResponder.INSTANCE;
+
+    private CheckpointStorageAccess checkpointStorageAccess;
 
     public StreamMockEnvironment(
             Configuration jobConfig,
@@ -437,5 +440,13 @@ public class StreamMockEnvironment implements Environment {
     @Override
     public JobInfo getJobInfo() {
         return jobInfo;
+    }
+
+    public void setCheckpointStorageAccess(CheckpointStorageAccess checkpointStorageAccess) {
+        this.checkpointStorageAccess = checkpointStorageAccess;
+    }
+
+    public CheckpointStorageAccess getCheckpointStorageAccess() {
+        return checkpointStorageAccess;
     }
 }

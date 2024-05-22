@@ -63,7 +63,7 @@ new JobManagerCheckpointStorage(MAX_MEM_STATE_SIZE);
 `JobManagerCheckpointStorage` 的限制:
 
 - 默认情况下，每个 State 的大小限制为 5 MB。 可以在 `JobManagerCheckpointStorage` 的构造函数中修改大小。
-- 无论配置的最大 State 大小如何，状态都不能大于 Pekka 框架的大小（请参阅 [配置参数]({{< ref "docs/deployment/config" >}})）。
+- 无论配置的最大 State 大小如何，状态都不能大于 Pekko 框架的大小（请参阅 [配置参数]({{< ref "docs/deployment/config" >}})）。
 - 聚合后总的状态大小必须小于 JobManager 的内存上限。
 
 鼓励在以下场景使用 JobManagerCheckpointStorage：
@@ -91,12 +91,12 @@ Checkpoint 在默认的情况下仅用于恢复失败的作业，并不保留，
 
 ```java
 CheckpointConfig config = env.getCheckpointConfig();
-config.setExternalizedCheckpointCleanup(ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+config.setExternalizedCheckpointRetention(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
 ```
 
-`ExternalizedCheckpointCleanup` 配置项定义了当作业取消时，对作业 checkpoint 的操作：
-- **`ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION`**：当作业取消时，保留作业的 checkpoint。注意，这种情况下，需要手动清除该作业保留的 checkpoint。
-- **`ExternalizedCheckpointCleanup.DELETE_ON_CANCELLATION`**：当作业取消时，删除作业的 checkpoint。仅当作业失败时，作业的 checkpoint 才会被保留。
+`ExternalizedCheckpointRetention` 配置项定义了当作业取消时，对作业 checkpoint 的操作：
+- **`ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION`**：当作业取消时，保留作业的 checkpoint。注意，这种情况下，需要手动清除该作业保留的 checkpoint。
+- **`ExternalizedCheckpointRetention.DELETE_ON_CANCELLATION`**：当作业取消时，删除作业的 checkpoint。仅当作业失败时，作业的 checkpoint 才会被保留。
 
 ### 目录结构
 

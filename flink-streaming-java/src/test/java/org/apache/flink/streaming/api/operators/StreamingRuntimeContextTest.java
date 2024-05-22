@@ -24,6 +24,7 @@ import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.functions.SerializerFactory;
+import org.apache.flink.api.common.serialization.SerializerConfig;
 import org.apache.flink.api.common.state.AggregatingStateDescriptor;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -51,6 +52,7 @@ import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
 import org.apache.flink.runtime.state.AbstractStateBackend;
+import org.apache.flink.runtime.state.AsyncKeyedStateBackend;
 import org.apache.flink.runtime.state.DefaultKeyedStateStore;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyedStateBackend;
@@ -59,6 +61,7 @@ import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
+import org.apache.flink.runtime.state.v2.DefaultKeyedStateStoreV2;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
@@ -66,7 +69,7 @@ import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
 import org.apache.flink.streaming.util.CollectorOutput;
 import org.apache.flink.streaming.util.MockStreamTaskBuilder;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.Matchers;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -76,19 +79,17 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Tests for {@link StreamingRuntimeContext}. */
-public class StreamingRuntimeContextTest {
+class StreamingRuntimeContextTest {
 
     @Test
-    public void testValueStateInstantiation() throws Exception {
+    void testValueStateInstantiation() throws Exception {
 
         final ExecutionConfig config = new ExecutionConfig();
         config.getSerializerConfig().registerKryoType(Path.class);
@@ -103,13 +104,13 @@ public class StreamingRuntimeContextTest {
         TypeSerializer<?> serializer = descrIntercepted.getSerializer();
 
         // check that the Path class is really registered, i.e., the execution config was applied
-        assertTrue(serializer instanceof KryoSerializer);
-        assertTrue(
-                ((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId() > 0);
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
     }
 
     @Test
-    public void testReducingStateInstantiation() throws Exception {
+    void testReducingStateInstantiation() throws Exception {
 
         final ExecutionConfig config = new ExecutionConfig();
         config.getSerializerConfig().registerKryoType(Path.class);
@@ -130,13 +131,13 @@ public class StreamingRuntimeContextTest {
         TypeSerializer<?> serializer = descrIntercepted.getSerializer();
 
         // check that the Path class is really registered, i.e., the execution config was applied
-        assertTrue(serializer instanceof KryoSerializer);
-        assertTrue(
-                ((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId() > 0);
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
     }
 
     @Test
-    public void testAggregatingStateInstantiation() throws Exception {
+    void testAggregatingStateInstantiation() throws Exception {
         final ExecutionConfig config = new ExecutionConfig();
         config.getSerializerConfig().registerKryoType(Path.class);
 
@@ -158,13 +159,13 @@ public class StreamingRuntimeContextTest {
         TypeSerializer<?> serializer = descrIntercepted.getSerializer();
 
         // check that the Path class is really registered, i.e., the execution config was applied
-        assertTrue(serializer instanceof KryoSerializer);
-        assertTrue(
-                ((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId() > 0);
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
     }
 
     @Test
-    public void testListStateInstantiation() throws Exception {
+    void testListStateInstantiation() throws Exception {
 
         final ExecutionConfig config = new ExecutionConfig();
         config.getSerializerConfig().registerKryoType(Path.class);
@@ -180,32 +181,32 @@ public class StreamingRuntimeContextTest {
         TypeSerializer<?> serializer = descrIntercepted.getSerializer();
 
         // check that the Path class is really registered, i.e., the execution config was applied
-        assertTrue(serializer instanceof ListSerializer);
+        assertThat(serializer).isInstanceOf(ListSerializer.class);
 
         TypeSerializer<?> elementSerializer = descrIntercepted.getElementSerializer();
-        assertTrue(elementSerializer instanceof KryoSerializer);
-        assertTrue(
-                ((KryoSerializer<?>) elementSerializer)
+        assertThat(elementSerializer).isInstanceOf(KryoSerializer.class);
+        assertThat(
+                        ((KryoSerializer<?>) elementSerializer)
                                 .getKryo()
                                 .getRegistration(Path.class)
-                                .getId()
-                        > 0);
+                                .getId())
+                .isPositive();
     }
 
     @Test
-    public void testListStateReturnsEmptyListByDefault() throws Exception {
+    void testListStateReturnsEmptyListByDefault() throws Exception {
         StreamingRuntimeContext context = createRuntimeContext();
 
         ListStateDescriptor<String> descr = new ListStateDescriptor<>("name", String.class);
         ListState<String> state = context.getListState(descr);
 
         Iterable<String> value = state.get();
-        assertNotNull(value);
-        assertFalse(value.iterator().hasNext());
+        assertThat(value).isNotNull();
+        assertThat(value.iterator()).isExhausted();
     }
 
     @Test
-    public void testMapStateInstantiation() throws Exception {
+    void testMapStateInstantiation() throws Exception {
 
         final ExecutionConfig config = new ExecutionConfig();
         config.getSerializerConfig().registerKryoType(Path.class);
@@ -224,14 +225,17 @@ public class StreamingRuntimeContextTest {
         TypeSerializer<?> valueSerializer = descrIntercepted.getValueSerializer();
 
         // check that the Path class is really registered, i.e., the execution config was applied
-        assertTrue(valueSerializer instanceof KryoSerializer);
-        assertTrue(
-                ((KryoSerializer<?>) valueSerializer).getKryo().getRegistration(Path.class).getId()
-                        > 0);
+        assertThat(valueSerializer).isInstanceOf(KryoSerializer.class);
+        assertThat(
+                        ((KryoSerializer<?>) valueSerializer)
+                                .getKryo()
+                                .getRegistration(Path.class)
+                                .getId())
+                .isPositive();
     }
 
     @Test
-    public void testMapStateReturnsEmptyMapByDefault() throws Exception {
+    void testMapStateReturnsEmptyMapByDefault() throws Exception {
 
         StreamingRuntimeContext context = createMapOperatorRuntimeContext();
 
@@ -240,8 +244,115 @@ public class StreamingRuntimeContextTest {
         MapState<Integer, String> state = context.getMapState(descr);
 
         Iterable<Map.Entry<Integer, String>> value = state.entries();
-        assertNotNull(value);
-        assertFalse(value.iterator().hasNext());
+        assertThat(value).isNotNull();
+        assertThat(value.iterator()).isExhausted();
+    }
+
+    @Test
+    void testV2ValueStateInstantiation() throws Exception {
+
+        final ExecutionConfig config = new ExecutionConfig();
+        SerializerConfig serializerConfig = config.getSerializerConfig();
+        serializerConfig.registerKryoType(Path.class);
+
+        final AtomicReference<Object> descriptorCapture = new AtomicReference<>();
+
+        StreamingRuntimeContext context = createRuntimeContext(descriptorCapture, config);
+        org.apache.flink.runtime.state.v2.ValueStateDescriptor<TaskInfo> descr =
+                new org.apache.flink.runtime.state.v2.ValueStateDescriptor<>(
+                        "name", TypeInformation.of(TaskInfo.class), serializerConfig);
+        context.getValueState(descr);
+
+        org.apache.flink.runtime.state.v2.ValueStateDescriptor<?> descrIntercepted =
+                (org.apache.flink.runtime.state.v2.ValueStateDescriptor<?>) descriptorCapture.get();
+        TypeSerializer<?> serializer = descrIntercepted.getSerializer();
+
+        // check that the Path class is really registered, i.e., the execution config was applied
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
+    }
+
+    @Test
+    void testV2ListStateInstantiation() throws Exception {
+        final ExecutionConfig config = new ExecutionConfig();
+        SerializerConfig serializerConfig = config.getSerializerConfig();
+        serializerConfig.registerKryoType(Path.class);
+
+        final AtomicReference<Object> descriptorCapture = new AtomicReference<>();
+
+        StreamingRuntimeContext context = createRuntimeContext(descriptorCapture, config);
+        org.apache.flink.runtime.state.v2.ListStateDescriptor<TaskInfo> descr =
+                new org.apache.flink.runtime.state.v2.ListStateDescriptor<>(
+                        "name", TypeInformation.of(TaskInfo.class), serializerConfig);
+        context.getListState(descr);
+
+        org.apache.flink.runtime.state.v2.ListStateDescriptor<?> descrIntercepted =
+                (org.apache.flink.runtime.state.v2.ListStateDescriptor<?>) descriptorCapture.get();
+        TypeSerializer<?> serializer = descrIntercepted.getSerializer();
+
+        // check that the Path class is really registered, i.e., the execution config was applied
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
+    }
+
+    @Test
+    void testV2MapStateInstantiation() throws Exception {
+        final ExecutionConfig config = new ExecutionConfig();
+        SerializerConfig serializerConfig = config.getSerializerConfig();
+        serializerConfig.registerKryoType(Path.class);
+
+        final AtomicReference<Object> descriptorCapture = new AtomicReference<>();
+
+        StreamingRuntimeContext context = createRuntimeContext(descriptorCapture, config);
+        org.apache.flink.runtime.state.v2.MapStateDescriptor<String, TaskInfo> descr =
+                new org.apache.flink.runtime.state.v2.MapStateDescriptor<>(
+                        "name",
+                        TypeInformation.of(String.class),
+                        TypeInformation.of(TaskInfo.class),
+                        serializerConfig);
+        context.getMapState(descr);
+
+        org.apache.flink.runtime.state.v2.MapStateDescriptor<?, ?> descrIntercepted =
+                (org.apache.flink.runtime.state.v2.MapStateDescriptor<?, ?>)
+                        descriptorCapture.get();
+        TypeSerializer<?> serializer = descrIntercepted.getSerializer();
+
+        // check that the Path class is really registered, i.e., the execution config was applied
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
+    }
+
+    @Test
+    void testV2ReducingStateInstantiation() throws Exception {
+        final ExecutionConfig config = new ExecutionConfig();
+        SerializerConfig serializerConfig = config.getSerializerConfig();
+        serializerConfig.registerKryoType(Path.class);
+
+        final AtomicReference<Object> descriptorCapture = new AtomicReference<>();
+
+        StreamingRuntimeContext context = createRuntimeContext(descriptorCapture, config);
+
+        @SuppressWarnings("unchecked")
+        ReduceFunction<TaskInfo> reducer = (ReduceFunction<TaskInfo>) mock(ReduceFunction.class);
+
+        org.apache.flink.runtime.state.v2.ReducingStateDescriptor<TaskInfo> descr =
+                new org.apache.flink.runtime.state.v2.ReducingStateDescriptor<>(
+                        "name", reducer, TypeInformation.of(TaskInfo.class), serializerConfig);
+
+        context.getReducingState(descr);
+
+        org.apache.flink.runtime.state.v2.ReducingStateDescriptor<?> descrIntercepted =
+                (org.apache.flink.runtime.state.v2.ReducingStateDescriptor<?>)
+                        descriptorCapture.get();
+        TypeSerializer<?> serializer = descrIntercepted.getSerializer();
+
+        // check that the Path class is really registered, i.e., the execution config was applied
+        assertThat(serializer).isInstanceOf(KryoSerializer.class);
+        assertThat(((KryoSerializer<?>) serializer).getKryo().getRegistration(Path.class).getId())
+                .isPositive();
     }
 
     // ------------------------------------------------------------------------
@@ -307,6 +418,8 @@ public class StreamingRuntimeContextTest {
 
         KeyedStateBackend keyedStateBackend = mock(KeyedStateBackend.class);
 
+        AsyncKeyedStateBackend asyncKeyedStateBackend = mock(AsyncKeyedStateBackend.class);
+
         DefaultKeyedStateStore keyedStateStore =
                 new DefaultKeyedStateStore(
                         keyedStateBackend,
@@ -320,21 +433,28 @@ public class StreamingRuntimeContextTest {
                         });
 
         doAnswer(
-                        new Answer<Object>() {
-
-                            @Override
-                            public Object answer(InvocationOnMock invocationOnMock)
-                                    throws Throwable {
-                                ref.set(invocationOnMock.getArguments()[2]);
-                                return null;
-                            }
-                        })
+                        (Answer<Object>)
+                                invocationOnMock -> {
+                                    ref.set(invocationOnMock.getArguments()[2]);
+                                    return null;
+                                })
                 .when(keyedStateBackend)
                 .getPartitionedState(
                         Matchers.any(), any(TypeSerializer.class), any(StateDescriptor.class));
 
+        doAnswer(
+                        (Answer<Object>)
+                                invocationOnMock -> {
+                                    ref.set(invocationOnMock.getArguments()[0]);
+                                    return null;
+                                })
+                .when(asyncKeyedStateBackend)
+                .createState(any(org.apache.flink.runtime.state.v2.StateDescriptor.class));
+
         operator.initializeState(streamTaskStateManager);
         operator.getRuntimeContext().setKeyedStateStore(keyedStateStore);
+        operator.getRuntimeContext()
+                .setKeyedStateStoreV2(new DefaultKeyedStateStoreV2(asyncKeyedStateBackend));
 
         return operator;
     }
